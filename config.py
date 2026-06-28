@@ -1,0 +1,224 @@
+"""
+Configuration for Trading Signal Bot
+"""
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Telegram Bot Token
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+
+# Binance (optional - public API works without keys)
+BINANCE_API_KEY = os.getenv("BINANCE_API_KEY", "")
+BINANCE_SECRET_KEY = os.getenv("BINANCE_SECRET_KEY", "")
+
+# Trading pairs available for signals
+AVAILABLE_PAIRS = {
+    # ============ Crypto ============
+    "BTC/USD": {"type": "crypto", "binance_symbol": "BTCUSDT", "decimal_places": 2},
+    "ETH/USD": {"type": "crypto", "binance_symbol": "ETHUSDT", "decimal_places": 2},
+    "SOL/USD": {"type": "crypto", "binance_symbol": "SOLUSDT", "decimal_places": 3},
+    "BNB/USD": {"type": "crypto", "binance_symbol": "BNBUSDT", "decimal_places": 2},
+    "XRP/USD": {"type": "crypto", "binance_symbol": "XRPUSDT", "decimal_places": 4},
+    "DOGE/USD": {"type": "crypto", "binance_symbol": "DOGEUSDT", "decimal_places": 5},
+    "ADA/USD": {"type": "crypto", "binance_symbol": "ADAUSDT", "decimal_places": 4},
+    "DOT/USD": {"type": "crypto", "binance_symbol": "DOTUSDT", "decimal_places": 3},
+    "LINK/USD": {"type": "crypto", "binance_symbol": "LINKUSDT", "decimal_places": 3},
+    "AVAX/USD": {"type": "crypto", "binance_symbol": "AVAXUSDT", "decimal_places": 3},
+    "MATIC/USD": {"type": "crypto", "binance_symbol": "MATICUSDT", "decimal_places": 4},
+    "ATOM/USD": {"type": "crypto", "binance_symbol": "ATOMUSDT", "decimal_places": 3},
+    "LTC/USD": {"type": "crypto", "binance_symbol": "LTCUSDT", "decimal_places": 2},
+    "BCH/USD": {"type": "crypto", "binance_symbol": "BCHUSDT", "decimal_places": 2},
+    "TRX/USD": {"type": "crypto", "binance_symbol": "TRXUSDT", "decimal_places": 5},
+    "XLM/USD": {"type": "crypto", "binance_symbol": "XLMUSDT", "decimal_places": 5},
+    "FIL/USD": {"type": "crypto", "binance_symbol": "FILUSDT", "decimal_places": 3},
+    "APT/USD": {"type": "crypto", "binance_symbol": "APTUSDT", "decimal_places": 3},
+    "SUI/USD": {"type": "crypto", "binance_symbol": "SUIUSDT", "decimal_places": 3},
+    "ARB/USD": {"type": "crypto", "binance_symbol": "ARBUSDT", "decimal_places": 4},
+    "NEAR/USD": {"type": "crypto", "binance_symbol": "NEARUSDT", "decimal_places": 3},
+    "OP/USD": {"type": "crypto", "binance_symbol": "OPUSDT", "decimal_places": 3},
+    "INJ/USD": {"type": "crypto", "binance_symbol": "INJUSDT", "decimal_places": 3},
+    "PEPE/USD": {"type": "crypto", "binance_symbol": "PEPEUSDT", "decimal_places": 6},
+    "SHIB/USD": {"type": "crypto", "binance_symbol": "SHIBUSDT", "decimal_places": 7},
+
+    # ============ Forex (via Yahoo Finance) ============
+    "EUR/USD": {"type": "forex", "yfinance_symbol": "EURUSD=X", "decimal_places": 5},
+    "GBP/USD": {"type": "forex", "yfinance_symbol": "GBPUSD=X", "decimal_places": 5},
+    "USD/JPY": {"type": "forex", "yfinance_symbol": "USDJPY=X", "decimal_places": 3},
+    "USD/CAD": {"type": "forex", "yfinance_symbol": "USDCAD=X", "decimal_places": 5},
+    "AUD/USD": {"type": "forex", "yfinance_symbol": "AUDUSD=X", "decimal_places": 5},
+    "USD/CHF": {"type": "forex", "yfinance_symbol": "USDCHF=X", "decimal_places": 5},
+    "NZD/USD": {"type": "forex", "yfinance_symbol": "NZDUSD=X", "decimal_places": 5},
+    "GBP/JPY": {"type": "forex", "yfinance_symbol": "GBPJPY=X", "decimal_places": 3},
+    "EUR/JPY": {"type": "forex", "yfinance_symbol": "EURJPY=X", "decimal_places": 3},
+    "EUR/GBP": {"type": "forex", "yfinance_symbol": "EURGBP=X", "decimal_places": 5},
+    "GBP/AUD": {"type": "forex", "yfinance_symbol": "GBPAUD=X", "decimal_places": 5},
+    "AUD/JPY": {"type": "forex", "yfinance_symbol": "AUDJPY=X", "decimal_places": 3},
+    "EUR/AUD": {"type": "forex", "yfinance_symbol": "EURAUD=X", "decimal_places": 5},
+    "GBP/CHF": {"type": "forex", "yfinance_symbol": "GBPCHF=X", "decimal_places": 5},
+    "EUR/CHF": {"type": "forex", "yfinance_symbol": "EURCHF=X", "decimal_places": 5},
+    "AUD/CAD": {"type": "forex", "yfinance_symbol": "AUDCAD=X", "decimal_places": 5},
+    "CAD/JPY": {"type": "forex", "yfinance_symbol": "CADJPY=X", "decimal_places": 3},
+    "NZD/JPY": {"type": "forex", "yfinance_symbol": "NZDJPY=X", "decimal_places": 3},
+    "CHF/JPY": {"type": "forex", "yfinance_symbol": "CHFJPY=X", "decimal_places": 3},
+    "EUR/NZD": {"type": "forex", "yfinance_symbol": "EURNZD=X", "decimal_places": 5},
+    "GBP/NZD": {"type": "forex", "yfinance_symbol": "GBPNZD=X", "decimal_places": 5},
+    "USD/MXN": {"type": "forex", "yfinance_symbol": "USDMXN=X", "decimal_places": 4},
+    "USD/ZAR": {"type": "forex", "yfinance_symbol": "USDZAR=X", "decimal_places": 4},
+    "USD/TRY": {"type": "forex", "yfinance_symbol": "USDTRY=X", "decimal_places": 4},
+    "USD/PLN": {"type": "forex", "yfinance_symbol": "USDPLN=X", "decimal_places": 4},
+
+    # ============ Stocks / OTC ============
+    "AAPL": {"type": "stock", "otc": True, "yfinance_symbol": "AAPL", "decimal_places": 2},
+    "TSLA": {"type": "stock", "otc": True, "yfinance_symbol": "TSLA", "decimal_places": 2},
+    "GOOGL": {"type": "stock", "otc": True, "yfinance_symbol": "GOOGL", "decimal_places": 2},
+    "AMZN": {"type": "stock", "otc": True, "yfinance_symbol": "AMZN", "decimal_places": 2},
+    "NVDA": {"type": "stock", "otc": True, "yfinance_symbol": "NVDA", "decimal_places": 2},
+    "META": {"type": "stock", "otc": True, "yfinance_symbol": "META", "decimal_places": 2},
+    "MSFT": {"type": "stock", "otc": True, "yfinance_symbol": "MSFT", "decimal_places": 2},
+    "TSM": {"type": "stock", "otc": True, "yfinance_symbol": "TSM", "decimal_places": 2},
+    "AMD": {"type": "stock", "otc": True, "yfinance_symbol": "AMD", "decimal_places": 2},
+    "NFLX": {"type": "stock", "otc": True, "yfinance_symbol": "NFLX", "decimal_places": 2},
+    "AMC": {"type": "stock", "otc": True, "yfinance_symbol": "AMC", "decimal_places": 2},
+    "GME": {"type": "stock", "otc": True, "yfinance_symbol": "GME", "decimal_places": 2},
+    "DIS": {"type": "stock", "otc": True, "yfinance_symbol": "DIS", "decimal_places": 2},
+    "BA": {"type": "stock", "otc": True, "yfinance_symbol": "BA", "decimal_places": 2},
+    "JPM": {"type": "stock", "otc": True, "yfinance_symbol": "JPM", "decimal_places": 2},
+    "V": {"type": "stock", "otc": True, "yfinance_symbol": "V", "decimal_places": 2},
+    "JNJ": {"type": "stock", "otc": True, "yfinance_symbol": "JNJ", "decimal_places": 2},
+    "WMT": {"type": "stock", "otc": True, "yfinance_symbol": "WMT", "decimal_places": 2},
+    "KO": {"type": "stock", "otc": True, "yfinance_symbol": "KO", "decimal_places": 2},
+    "MCD": {"type": "stock", "otc": True, "yfinance_symbol": "MCD", "decimal_places": 2},
+    "NKE": {"type": "stock", "otc": True, "yfinance_symbol": "NKE", "decimal_places": 2},
+    "SBUX": {"type": "stock", "otc": True, "yfinance_symbol": "SBUX", "decimal_places": 2},
+    "PLTR": {"type": "stock", "otc": True, "yfinance_symbol": "PLTR", "decimal_places": 2},
+    "UBER": {"type": "stock", "otc": True, "yfinance_symbol": "UBER", "decimal_places": 2},
+    "RIVN": {"type": "stock", "otc": True, "yfinance_symbol": "RIVN", "decimal_places": 2},
+    "COIN": {"type": "stock", "otc": True, "yfinance_symbol": "COIN", "decimal_places": 2},
+    "SNAP": {"type": "stock", "otc": True, "yfinance_symbol": "SNAP", "decimal_places": 2},
+    "PYPL": {"type": "stock", "otc": True, "yfinance_symbol": "PYPL", "decimal_places": 2},
+    "SQ": {"type": "stock", "otc": True, "yfinance_symbol": "SQ", "decimal_places": 2},
+    "MRNA": {"type": "stock", "otc": True, "yfinance_symbol": "MRNA", "decimal_places": 2},
+    "PFE": {"type": "stock", "otc": True, "yfinance_symbol": "PFE", "decimal_places": 2},
+
+    # ============ Commodities ============
+    "XAU/USD": {"type": "commodity", "otc": True, "yfinance_symbol": "GC=F", "decimal_places": 2},
+    "XAG/USD": {"type": "commodity", "otc": True, "yfinance_symbol": "SI=F", "decimal_places": 3},
+    "USOIL": {"type": "commodity", "otc": True, "yfinance_symbol": "CL=F", "decimal_places": 2},
+    "UKOIL": {"type": "commodity", "otc": True, "yfinance_symbol": "BZ=F", "decimal_places": 2},
+    "NATGAS": {"type": "commodity", "otc": True, "yfinance_symbol": "NG=F", "decimal_places": 3},
+    "COPPER": {"type": "commodity", "otc": True, "yfinance_symbol": "HG=F", "decimal_places": 4},
+    "PLATINUM": {"type": "commodity", "otc": True, "yfinance_symbol": "PL=F", "decimal_places": 2},
+    "PALLADIUM": {"type": "commodity", "otc": True, "yfinance_symbol": "PA=F", "decimal_places": 2},
+    "ALUMINUM": {"type": "commodity", "otc": True, "yfinance_symbol": "ALI=F", "decimal_places": 2},
+    "WHEAT": {"type": "commodity", "otc": True, "yfinance_symbol": "ZW=F", "decimal_places": 2},
+    "CORN": {"type": "commodity", "otc": True, "yfinance_symbol": "ZC=F", "decimal_places": 2},
+    "SOYBEAN": {"type": "commodity", "otc": True, "yfinance_symbol": "ZS=F", "decimal_places": 2},
+    "COFFEE": {"type": "commodity", "otc": True, "yfinance_symbol": "KC=F", "decimal_places": 2},
+    "SUGAR": {"type": "commodity", "otc": True, "yfinance_symbol": "SB=F", "decimal_places": 3},
+    "COTTON": {"type": "commodity", "otc": True, "yfinance_symbol": "CT=F", "decimal_places": 2},
+    "COCOA": {"type": "commodity", "otc": True, "yfinance_symbol": "CC=F", "decimal_places": 1},
+    "OATS": {"type": "commodity", "otc": True, "yfinance_symbol": "ZO=F", "decimal_places": 2},
+    "RICE": {"type": "commodity", "otc": True, "yfinance_symbol": "ZR=F", "decimal_places": 2},
+    "LUMBER": {"type": "commodity", "otc": True, "yfinance_symbol": "LBS=F", "decimal_places": 2},
+}
+
+# Timeframes available for analysis
+TIMEFRAMES = {
+    "1m": "1 minute",
+    "5m": "5 minutes",
+    "15m": "15 minutes",
+    "30m": "30 minutes",
+    "1h": "1 hour",
+    "4h": "4 hours",
+}
+
+# Default expiry times for binary options (in minutes)
+BINARY_EXPIRY_OPTIONS = [1, 5, 15, 30, 60]
+
+# Signal confidence thresholds
+HIGH_CONFIDENCE = 75  # >= 75%
+MEDIUM_CONFIDENCE = 55  # >= 55%
+LOW_CONFIDENCE = 0  # < 55%
+
+# Bot messages
+WELCOME_MESSAGE = """🤖 **TradeMind Signal Bot** 🚀
+
+سلام! به ربات سیگنال‌دهنده هوشمند خوش اومدی!
+
+من با استفاده از **تحلیل تکنیکال پیشرفته** و **هوش مصنوعی** سیگنال‌های معاملاتی برای بازارهای مختلف ارائه میدم.
+
+📋 **دستورات:**
+/signal <pair> - دریافت سیگنال برای یک جفت‌ارز
+/analysis <pair> - تحلیل کامل بازار
+/pairs - لیست جفت‌ارزهای قابل معامله
+/help - راهنما
+
+🔹 **مثال:** /signal BTC/USD
+🔹 **مثال:** /analysis EUR/USD
+
+قدرت هوش مصنوعی در خدمت معاملات تو! 🎯"""
+
+HELP_MESSAGE = """📖 **راهنمای ربات TradeMind Signal Bot**
+
+**🔍 دستورات اصلی:**
+
+▪️ `/signal BTC/USD` — دریافت سیگنال خرید/فروش
+▪️ `/analysis EUR/USD` — تحلیل کامل تکنیکال
+▪️ `/pairs` — نمایش همه جفت‌ارزهای قابل معامله
+▪️ `/subscribe 5m` — دریافت خودکار سیگنال هر ۵ دقیقه
+▪️ `/unsubscribe` — لغو دریافت خودکار سیگنال
+▪️ `/help` — نمایش این راهنما
+
+**📊 نحوه تحلیل:**
+- RSI (شاخص قدرت نسبی)
+- MACD (میانگین متحرک همگرایی/واگرایی)
+- EMA Crossover (تقاطع میانگین‌های متحرک)
+- Bollinger Bands (باندهای بولینگر)
+- Stochastic (استوکستیک)
+- تحلیل هم‌جهت چند اندیکاتور
+
+**💡 نکات مهم:**
+⚠️ سیگنال‌ها فقط برای اهداف آموزشی و تحلیلی هستند
+⚠️ هیچ تضمینی برای سودآوری وجود ندارد
+⚠️ همیشه مدیریت سرمایه رو رعایت کن
+
+**📞 پشتیبانی:**
+@trademind_help
+"""
+
+PAIRS_LIST_HEADER = """📊 **لیست جفت‌ارزهای قابل معامله**
+
+برای دریافت سیگنال از دستور زیر استفاده کن:
+`/signal <نام>`"""
+
+ERROR_MESSAGE = "❌ خطا در پردازش درخواست. لطفاً دوباره تلاش کن."
+PAIR_NOT_FOUND = "❌ جفت‌ارز مورد نظر یافت نشد! از /pairs برای دیدن لیست استفاده کن."
+
+# Category display config for inline buttons
+CATEGORY_ORDER = ["crypto", "forex", "stock", "commodity"]
+CATEGORY_DISPLAY = {
+    "crypto": {"emoji": "🪙", "label": "Crypto"},
+    "forex": {"emoji": "💱", "label": "Forex"},
+    "stock": {"emoji": "🏢", "label": "OTC & Stocks"},
+    "commodity": {"emoji": "🛢️", "label": "Commodities"},
+}
+
+# Max pairs per row in inline buttons
+PAIRS_PER_ROW = 3
+
+
+def get_pair_display(pair_name: str) -> str:
+    """Get display name for a pair, e.g. 'BTC/USD', 'AAPL (OTC)'"""
+    info = AVAILABLE_PAIRS.get(pair_name)
+    if info and info.get("otc"):
+        return f"{pair_name} (OTC)"
+    return pair_name
+
+
+def get_pairs_by_category(category: str) -> list:
+    """Get list of pair names in a category, sorted."""
+    pairs = [p for p, info in AVAILABLE_PAIRS.items() if info.get("type") == category]
+    return sorted(pairs)
+
