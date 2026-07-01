@@ -59,31 +59,86 @@ AVAILABLE_PAIRS = {
     "SP500": {"type": "indices", "otc": True, "yfinance_symbol": "^GSPC", "decimal_places": 2},
 
     # ============ Forex (via Yahoo Finance) ============
-    "EUR/USD": {"type": "forex", "yfinance_symbol": "EURUSD=X", "decimal_places": 5},
-    "GBP/USD": {"type": "forex", "yfinance_symbol": "GBPUSD=X", "decimal_places": 5},
-    "USD/JPY": {"type": "forex", "yfinance_symbol": "USDJPY=X", "decimal_places": 3},
-    "USD/CAD": {"type": "forex", "yfinance_symbol": "USDCAD=X", "decimal_places": 5},
-    "AUD/USD": {"type": "forex", "yfinance_symbol": "AUDUSD=X", "decimal_places": 5},
-    "USD/CHF": {"type": "forex", "yfinance_symbol": "USDCHF=X", "decimal_places": 5},
-    "NZD/USD": {"type": "forex", "yfinance_symbol": "NZDUSD=X", "decimal_places": 5},
-    "GBP/JPY": {"type": "forex", "yfinance_symbol": "GBPJPY=X", "decimal_places": 3},
-    "EUR/JPY": {"type": "forex", "yfinance_symbol": "EURJPY=X", "decimal_places": 3},
-    "EUR/GBP": {"type": "forex", "yfinance_symbol": "EURGBP=X", "decimal_places": 5},
-    "GBP/AUD": {"type": "forex", "yfinance_symbol": "GBPAUD=X", "decimal_places": 5},
-    "AUD/JPY": {"type": "forex", "yfinance_symbol": "AUDJPY=X", "decimal_places": 3},
-    "EUR/AUD": {"type": "forex", "yfinance_symbol": "EURAUD=X", "decimal_places": 5},
-    "GBP/CHF": {"type": "forex", "yfinance_symbol": "GBPCHF=X", "decimal_places": 5},
-    "EUR/CHF": {"type": "forex", "yfinance_symbol": "EURCHF=X", "decimal_places": 5},
+    # Standard pairs (non-OTC) — with yfinance support
     "AUD/CAD": {"type": "forex", "yfinance_symbol": "AUDCAD=X", "decimal_places": 5},
+    "AUD/CHF": {"type": "forex", "yfinance_symbol": "AUDCHF=X", "decimal_places": 5},
+    "AUD/JPY": {"type": "forex", "yfinance_symbol": "AUDJPY=X", "decimal_places": 3},
+    "AUD/USD": {"type": "forex", "yfinance_symbol": "AUDUSD=X", "decimal_places": 5},
+    "CAD/CHF": {"type": "forex", "yfinance_symbol": "CADCHF=X", "decimal_places": 5},
     "CAD/JPY": {"type": "forex", "yfinance_symbol": "CADJPY=X", "decimal_places": 3},
-    "NZD/JPY": {"type": "forex", "yfinance_symbol": "NZDJPY=X", "decimal_places": 3},
     "CHF/JPY": {"type": "forex", "yfinance_symbol": "CHFJPY=X", "decimal_places": 3},
-    "EUR/NZD": {"type": "forex", "yfinance_symbol": "EURNZD=X", "decimal_places": 5},
-    "GBP/NZD": {"type": "forex", "yfinance_symbol": "GBPNZD=X", "decimal_places": 5},
-    "USD/MXN": {"type": "forex", "yfinance_symbol": "USDMXN=X", "decimal_places": 4},
-    "USD/ZAR": {"type": "forex", "yfinance_symbol": "USDZAR=X", "decimal_places": 4},
-    "USD/TRY": {"type": "forex", "yfinance_symbol": "USDTRY=X", "decimal_places": 4},
-    "USD/PLN": {"type": "forex", "yfinance_symbol": "USDPLN=X", "decimal_places": 4},
+    "EUR/AUD": {"type": "forex", "yfinance_symbol": "EURAUD=X", "decimal_places": 5},
+    "EUR/CAD": {"type": "forex", "yfinance_symbol": "EURCAD=X", "decimal_places": 5},
+    "EUR/CHF": {"type": "forex", "yfinance_symbol": "EURCHF=X", "decimal_places": 5},
+    "EUR/GBP": {"type": "forex", "yfinance_symbol": "EURGBP=X", "decimal_places": 5},
+    "EUR/JPY": {"type": "forex", "yfinance_symbol": "EURJPY=X", "decimal_places": 3},
+    "EUR/USD": {"type": "forex", "yfinance_symbol": "EURUSD=X", "decimal_places": 5},
+    "GBP/AUD": {"type": "forex", "yfinance_symbol": "GBPAUD=X", "decimal_places": 5},
+    "GBP/CAD": {"type": "forex", "yfinance_symbol": "GBPCAD=X", "decimal_places": 5},
+    "GBP/CHF": {"type": "forex", "yfinance_symbol": "GBPCHF=X", "decimal_places": 5},
+    "GBP/JPY": {"type": "forex", "yfinance_symbol": "GBPJPY=X", "decimal_places": 3},
+    "GBP/USD": {"type": "forex", "yfinance_symbol": "GBPUSD=X", "decimal_places": 5},
+    "USD/CAD": {"type": "forex", "yfinance_symbol": "USDCAD=X", "decimal_places": 5},
+    "USD/CHF": {"type": "forex", "yfinance_symbol": "USDCHF=X", "decimal_places": 5},
+    "USD/JPY": {"type": "forex", "yfinance_symbol": "USDJPY=X", "decimal_places": 3},
+    # OTC / Exotic pairs
+    "AED/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "AUD/CAD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "AUD/CHF OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "AUD/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "AUD/NZD OTC": {"type": "forex", "yfinance_symbol": "AUDNZD=X", "decimal_places": 5},
+    "AUD/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "BHD/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "CAD/CHF OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "CAD/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "CHF/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "CHF/NOK OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "EUR/CHF OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "EUR/GBP OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "EUR/HUF OTC": {"type": "forex", "yfinance_symbol": "EURHUF=X", "decimal_places": 4},
+    "EUR/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "EUR/NZD OTC": {"type": "forex", "yfinance_symbol": "EURNZD=X", "decimal_places": 5},
+    "EUR/RUB OTC": {"type": "forex", "yfinance_symbol": "EURRUB=X", "decimal_places": 4},
+    "EUR/TRY OTC": {"type": "forex", "yfinance_symbol": "EURTRY=X", "decimal_places": 4},
+    "EUR/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "GBP/AUD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "GBP/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "GBP/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "JOD/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "KES/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "LBP/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "MAD/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "NGN/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "NZD/JPY OTC": {"type": "forex", "yfinance_symbol": "NZDJPY=X", "decimal_places": 3},
+    "NZD/USD OTC": {"type": "forex", "yfinance_symbol": "NZDUSD=X", "decimal_places": 5},
+    "OMR/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "QAR/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "SAR/CNY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "TND/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "UAH/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/ARS OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/BDT OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/BRL OTC": {"type": "forex", "yfinance_symbol": "USDBRL=X", "decimal_places": 4},
+    "USD/CAD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "USD/CHF OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 5},
+    "USD/CLP OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/CNH OTC": {"type": "forex", "yfinance_symbol": "USDCNH=X", "decimal_places": 5},
+    "USD/COP OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/DZD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/EGP OTC": {"type": "forex", "yfinance_symbol": "USDEGP=X", "decimal_places": 4},
+    "USD/IDR OTC": {"type": "forex", "yfinance_symbol": "USDIDR=X", "decimal_places": 4},
+    "USD/INR OTC": {"type": "forex", "yfinance_symbol": "USDINR=X", "decimal_places": 4},
+    "USD/JPY OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 3},
+    "USD/MXN OTC": {"type": "forex", "yfinance_symbol": "USDMXN=X", "decimal_places": 4},
+    "USD/MYR OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/PHP OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/PKR OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/RUB OTC": {"type": "forex", "yfinance_symbol": "USDRUB=X", "decimal_places": 4},
+    "USD/SGD OTC": {"type": "forex", "yfinance_symbol": "USDSGD=X", "decimal_places": 5},
+    "USD/THB OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "USD/VND OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "YER/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
+    "ZAR/USD OTC": {"type": "forex", "yfinance_symbol": "", "decimal_places": 4},
 
     # ============ Stocks / OTC ============
     "AAPL": {"type": "stock", "otc": True, "yfinance_symbol": "AAPL", "decimal_places": 2},
@@ -213,12 +268,10 @@ ERROR_MESSAGE = "❌ خطا در پردازش درخواست. لطفاً دوب�
 PAIR_NOT_FOUND = "❌ جفت‌ارز مورد نظر یافت نشد! از /pairs برای دیدن لیست استفاده کن."
 
 # Category display config for inline buttons
-CATEGORY_ORDER = ["crypto", "forex", "stock", "commodity"]
+CATEGORY_ORDER = ["forex", "other"]
 CATEGORY_DISPLAY = {
-    "crypto": {"emoji": "🪙", "label": "Crypto"},
-    "forex": {"emoji": "💱", "label": "Forex"},
-    "stock": {"emoji": "🏢", "label": "OTC & Stocks"},
-    "commodity": {"emoji": "🛢️", "label": "Commodities"},
+    "forex": {"emoji": "💱", "label": "ارزها (Currencies)"},
+    "other": {"emoji": "📊", "label": "سایر (Other)"},
 }
 
 # Max pairs per row in inline buttons
@@ -234,7 +287,11 @@ def get_pair_display(pair_name: str) -> str:
 
 
 def get_pairs_by_category(category: str) -> list:
-    """Get list of pair names in a category, sorted."""
-    pairs = [p for p, info in AVAILABLE_PAIRS.items() if info.get("type") == category]
+    """Get list of pair names in a category, sorted.
+    'other' is a meta-category covering crypto, stock, and commodity."""
+    if category == "other":
+        pairs = [p for p, info in AVAILABLE_PAIRS.items() if info.get("type") in ("crypto", "stock", "commodity", "indices")]
+    else:
+        pairs = [p for p, info in AVAILABLE_PAIRS.items() if info.get("type") == category]
     return sorted(pairs)
 
