@@ -9,10 +9,14 @@ import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    InputMediaPhoto, InlineQueryResultArticle,
+    InputTextMessageContent, InlineQueryResultsButton,
+)
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    filters, ContextTypes, CallbackQueryHandler
+    filters, ContextTypes, CallbackQueryHandler, InlineQueryHandler,
 )
 from telegram.constants import ParseMode
 
