@@ -185,15 +185,15 @@ def format_signal(signal: dict) -> str:
     # Direction
     if direction == "CALL":
         dir_emoji = "🟢"
-        dir_text = "BUY (CALL) 📗"
-        signal_text = "BUY (CALL) 📗"
+        dir_text = "خرید (CALL) 📗"
+        signal_text = "خرید (CALL) 📗"
     elif direction == "PUT":
         dir_emoji = "🔴"
-        dir_text = "SELL (PUT) 📕"
-        signal_text = "SELL (PUT) 📕"
+        dir_text = "فروش (PUT) 📕"
+        signal_text = "فروش (PUT) 📕"
     else:
         dir_emoji = "⚪"
-        dir_text = "NEUTRAL ⚖️"
+        dir_text = "خنثی ⚖️"
         signal_text = direction
 
     # Price change
@@ -273,32 +273,32 @@ def format_signal(signal: dict) -> str:
         time_str = str(ts)
 
     msg = (
-        f"╔═══ ⚡️ **SIGNAL** ⚡️ ═══╗\n\n"
+        f"╔═══ ⚡️ **سیگنال** ⚡️ ═══╗\n\n"
         f"**{display_pair}** | `{tf}`\n\n"
-        f"📋 **Signal Info:**\n"
-        f"💵 **Price:** `{price:.{dec}f}`\n"
-        f"🔄 **Change:** `{change_emoji} {change:+.2f}%`\n"
-        f"⏰ **Updated:** `{time_str}`\n\n"
-        f"📌 **Market Setting:**\n"
-        f"📉 **Trend:** `{trend}`\n"
-        f"{vol_emoji} **Volatility:** `{vol}`\n"
+        f"📋 **اطلاعات سیگنال:**\n"
+        f"💵 **قیمت:** `{price:.{dec}f}`\n"
+        f"🔄 **تغییرات:** `{change_emoji} {change:+.2f}%`\n"
+        f"⏰ **به‌روزرسانی:** `{time_str}`\n\n"
+        f"📌 **وضعیت بازار:**\n"
+        f"📉 **روند:** `{trend}`\n"
+        f"{vol_emoji} **نوسان:** `{vol_fa}`\n"
     )
 
     if candle_str:
         msg += f"🕯 **Pattern:** {candle_str}\n"
 
     msg += (
-        f"⚖️ **Risk:** `{risk_str}`\n"
-        f"📐 **Support:** `{support:.{dec}f}`\n"
-        f"📐 **Resistance:** `{resistance:.{dec}f}`\n\n"
-        f"🔬 **Technical Overview:**\n"
+        f"⚖️ **ریسک:** `{risk_str}`\n"
+        f"📐 **حمایت:** `{support:.{dec}f}`\n"
+        f"📐 **مقاومت:** `{resistance:.{dec}f}`\n\n"
+        f"🔬 **نمای تکنیکال:**\n"
         f"{tech_overview}\n\n"
-        f"🎯 **Probabilities:**\n"
+        f"🎯 **احتمال:**\n"
         f"`┃{bar_fill}{bar_empty}┃ {confidence}%`\n"
-        f"▸ **Bot favors:** `{signal_text}`\n\n"
-        f"🤖 **Bot Signal:** `{signal_text}`\n"
-        f"⏱️ **Expiry:** `{expiry_str}`\n\n"
-        f"╚═══ ⚠️ *DYOR* ═══╝"
+        f"▸ **ربات پیشنهاد می‌دهد:** `{signal_text}`\n\n"
+        f"🤖 **سیگنال ربات:** `{signal_text}`\n"
+        f"⏱️ **انقضا:** `{expiry_str}`\n\n"
+        f"╚═══ ⚠️ *خودت تحقیق کن* ═══╝"
     )
 
     return msg
