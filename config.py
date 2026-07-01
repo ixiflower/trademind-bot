@@ -42,6 +42,10 @@ AVAILABLE_PAIRS = {
     "PEPE/USD": {"type": "crypto", "binance_symbol": "PEPEUSDT", "decimal_places": 6},
     "SHIB/USD": {"type": "crypto", "binance_symbol": "SHIBUSDT", "decimal_places": 7},
 
+    # Missing crypto from Pocket Option
+    "TON/USD": {"type": "crypto", "binance_symbol": "TONUSDT", "decimal_places": 3},
+    "DASH/USD": {"type": "crypto", "binance_symbol": "DASHUSDT", "decimal_places": 2},
+
     # ============ Forex (via Yahoo Finance) ============
     "EUR/USD": {"type": "forex", "yfinance_symbol": "EURUSD=X", "decimal_places": 5},
     "GBP/USD": {"type": "forex", "yfinance_symbol": "GBPUSD=X", "decimal_places": 5},
