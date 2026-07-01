@@ -478,6 +478,20 @@ async def pair_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # ---- Back Navigation ----
 
+async def back_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go back to main menu."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_media(
+        media=InputMediaPhoto(
+            media=open(STATIC_DIR / "welcome.jpg", "rb"),
+            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\nاز منوی زیر انتخاب کن:",
+            parse_mode=ParseMode.MARKDOWN,
+        ),
+        reply_markup=main_menu_keyboard(),
+    )
+
+
 async def back_cat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to category selection."""
     query = update.callback_query
@@ -744,6 +758,10 @@ def main():
     app.add_handler(CallbackQueryHandler(signal_timeframe_callback, pattern=r"^tf_"))
     app.add_handler(CallbackQueryHandler(back_cat_callback, pattern=r"^back_cat$"))
     app.add_handler(CallbackQueryHandler(back_pairs_callback, pattern=r"^back_pairs_"))
+    # Callbacks — back navigation
+    app.add_handler(CallbackQueryHandler(back_main_callback, pattern=r"^back_main$"))
+
+    # Callbacks — utility
     app.add_handler(CallbackQueryHandler(noop_callback, pattern=r"^noop$"))
 
     # Direct pair input
@@ -753,6 +771,8 @@ def main():
     ))
 
     # Unknown commands
+    app.add_handler(InlineQueryHandler(inline_search))
+
     app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
     logger.info("🤖 TradeMind Signal Bot is running...")
