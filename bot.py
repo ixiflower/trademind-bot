@@ -369,17 +369,43 @@ def format_pairs_list() -> str:
 # =======================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("📊 Get Signal", callback_data="back_cat")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(WELCOME_MESSAGE, parse_mode=ParseMode.MARKDOWN, reply_markup=reply_markup)
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+    with open(STATIC_DIR / "welcome.jpg", "rb") as f:
+        sent = await update.message.reply_photo(
+            photo=f,
+            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\nاز منوی زیر انتخاب کن:",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu_keyboard(),
+        )
+    await _track_msg(context, sent)
 
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(HELP_MESSAGE, parse_mode=ParseMode.MARKDOWN)
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+    with open(STATIC_DIR / "welcome.jpg", "rb") as f:
+        sent = await update.message.reply_photo(
+            photo=f, caption=HELP_MESSAGE,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=main_menu_keyboard(),
+        )
+    await _track_msg(context, sent)
 
 
 async def pairs(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(format_pairs_list(), parse_mode=ParseMode.MARKDOWN)
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+    with open(STATIC_DIR / "category.jpg", "rb") as f:
+        sent = await update.message.reply_photo(
+            photo=f, caption=format_pairs_list(),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=category_keyboard(),
+        )
+    await _track_msg(context, sent)
 
 
 # ---- Signal Command ----
@@ -388,7 +414,7 @@ async def signal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         # No pair specified → show category selection
         await update.message.reply_text(
-            "📊 **Select a market category:**",
+            "📊 **یک دسته بازار را انتخاب کنید:**",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=category_keyboard(),
         )
@@ -399,7 +425,7 @@ async def signal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if pair not in AVAILABLE_PAIRS:
         await update.message.reply_text(
-            f"❌ جفت‌ارز `{pair}` یافت نشد!",
+            f"❌ جفت‌ارز `{pair}` پیدا نشد!",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=category_keyboard(),
         )
@@ -457,7 +483,7 @@ async def back_cat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "📊 **Select a market category:**",
+        "📊 **یک دسته بازار را انتخاب کنید:**",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=category_keyboard(),
     )
