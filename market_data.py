@@ -108,6 +108,22 @@ def fetch_ohlcv(pair_name: str, timeframe: str = "5m", limit: int = 100) -> pd.D
         return None
     else:
         yahoo_symbol = pair_info["yfinance_symbol"]
+
+        # Handle OTC / exotic pairs with empty yfinance_symbol:
+        # strip " OTC" and look up the base pair, or construct XXXYYY=X
+        if not yahoo_symbol:
+            # Try to derive from the standard pair (e.g. "CAD/JPY OTC" -> "CAD/JPY")
+            base_name = pair_name.removesuffix(" OTC").removesuffix(" otc")
+            base_info = AVAILABLE_PAIRS.get(base_name)
+            if base_info:
+                yahoo_symbol = base_info.get("yfinance_symbol", "")
+            if not yahoo_symbol:
+                # Direct construction: "CAD/JPY" -> "CADJPY=X"
+                normalized = pair_name \
+                    .removesuffix(" OTC").removesuffix(" otc") \
+                    .replace("/", "").upper()
+                yahoo_symbol = f"{normalized}=X"
+
         interval_map = {
             "1m": "1m", "5m": "5m", "15m": "15m",
             "30m": "30m", "1h": "60m", "4h": "60m",
