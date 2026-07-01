@@ -847,9 +847,8 @@ async def analysis_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Scrape current Pocket Option signal (slow - takes ~20s).
 
-    Uses a headless browser to log into PO demo and read the Signals tab.
-    PO signals require a real registered account (demo shows 'locked').
-    Set PO_EMAIL / PO_PASSWORD env vars for a real account.
+    Uses undetected-chromedriver to log into PO and read the Signals tab.
+    Falls back gracefully when PO is blocked or signals are locked.
     """
     chat_id = update.effective_chat.id
     await _clean_prev_msg(context, chat_id)
@@ -866,7 +865,7 @@ async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     sent = await update.message.reply_text(
         "🔍 **در حال اتصال به Pocket Option...** ⏳\n"
-        "این عملیات حدود ۲۰ ثانیه طول می‌کشه.",
+        "حدود ۲۰ ثانیه طول می‌کشه.",
         parse_mode=ParseMode.MARKDOWN,
     )
     await _track_msg(context, sent)
@@ -874,18 +873,31 @@ async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pair = " ".join(context.args).strip().upper() if context.args else None
 
     try:
-        # Run scraper in a thread to avoid blocking the event loop
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, _po_scraper.get_po_signal, pair, False)
 
         if result.get("error"):
-            msg = f"❌ **خطا:** {result['error']}"
+            err = result["error"]
+            if "connect" in err.lower() or "proxy" in err.lower():
+                msg = (
+                    "🌐 **اتصال به Pocket Option ممکن نیست.**\n\n"
+                    "❌ سرور PO از طریق پروکسی فعلی در دسترس نیست.\n"
+                    "ممکنه IP پروکسی بلاک شده باشه.\n\n"
+                    "💡 راهکار:\n"
+                    "• پروکسی/VPN خودت رو عوض کن\n"
+                    "• یا از طریق مرورگر خودت وارد PO بشو و کوکی رو Export کن\n"
+                    "• با دستور `/pocookie` می‌تونی کوکی رو به ربات بدی"
+                )
+            else:
+                msg = f"❌ **خطا:** {err}"
         elif result.get("locked"):
             msg = (
                 "🔒 **سیگنال‌های PO قفل هستند.**\n\n"
                 "دمو یک‌کلیک دسترسی به سیگنال‌ها نداره.\n"
-                "برای استفاده، ایمیل و رمز حساب PO خود را در متغیرهای "
-                "محیطی `PO_EMAIL` و `PO_PASSWORD` تنظیم کن."
+                "برای استفاده:\n"
+                "• ایمیل و رمز PO را در متغیرهای محیطی تنظیم کن،\n"
+                "• یا از مرورگر خودت وارد PO بشو، کوکی رو Export کن\n"
+                "  و با `/pocookie` به ربات بده."
             )
         else:
             signal = result.get("signal", "UNKNOWN")
@@ -896,13 +908,15 @@ async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "SELL": "🔴",
                 "NEUTRAL": "⚪",
             }.get(signal, "❓")
+            account_type = result.get("account_type", "?")
+            account_icon = "👤" if account_type == "real" else "🧪"
 
             msg = (
-                f"🌐 **سیگنال Pocket Option**\n\n"
+                f"🌐 **سیگنال Pocket Option** {account_icon}\n\n"
                 f"**نماد:** `{result.get('symbol', '?')}`\n"
                 f"**سیگنال:** {signal_emoji} `{signal}`\n"
                 f"**زمان:** `{result.get('timestamp', '?')[:19]}`\n\n"
-                f"📋 **جزئیات:**\n```\n{result.get('raw_text', '')[:300]}\n```"
+                f"📋 **جزئیات:**\n```\n{result.get('raw_text', '')[:400]}\n```"
             )
 
         await sent.edit_text(msg, parse_mode=ParseMode.MARKDOWN)
@@ -914,9 +928,7 @@ async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.MARKDOWN,
         )
     finally:
-        # Close driver to avoid stale sessions
         await loop.run_in_executor(None, _po_scraper.close_driver)
-
 
 # ---- Subscribe / Unsubscribe ----
 
@@ -1113,6 +1125,56 @@ async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ---- PO Cookie Injection Command ----
+
+
+async def pocookie_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inject PO cookies from a JSON file for authenticated scraping.
+
+    Usage:
+        /pocookie - shows instructions
+        /pocookie <path> - loads cookies from the given file path
+
+    The cookies file should be exported from your browser after
+    manually logging into https://pocketoption.com.
+    Use EditThisCookie extension or 'Export cookies JSON' tools.
+    """
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
+    if not _PO_AVAILABLE:
+        sent = await update.message.reply_text(
+            "❌ ماژول اسکرپر در دسترس نیست.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _track_msg(context, sent)
+        return
+
+    if context.args:
+        cookie_path = " ".join(context.args)
+        loop = asyncio.get_event_loop()
+        msg = await loop.run_in_executor(
+            None, _po_scraper.inject_cookies, cookie_path
+        )
+    else:
+        msg = (
+            "🍪 **راهنمای تنظیم کوکی Pocket Option**\n\n"
+            "برای دریافت سیگنال‌های PO نیاز به کوکی مرورگر داری:\n\n"
+            "1️⃣ در مرورگر خودت (Chrome/Firefox) وارد "
+            "https://pocketoption.com بشو و لاگین کن\n\n"
+            "2️⃣ با افزونه **EditThisCookie** یا ابزار مشابه، "
+            "کوکی‌ها رو به صورت JSON Export کن\n\n"
+            "3️⃣ فایل رو روی سرور ذخیره کن و دستور زیر رو بزن:\n"
+            "`/pocookie /path/to/cookies.json`\n\n"
+            "یا فایل رو بذار توی `~/.po_cookies.json` "
+            "تا ربات خودکار بارش کنه."
+        )
+
+    sent = await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
+    await _track_msg(context, sent)
+
+
 # ========================================================
 # MAIN
 # ========================================================
@@ -1141,6 +1203,7 @@ def main():
     app.add_handler(CommandHandler("unsubscribe", unsubscribe_cmd))
     if _PO_AVAILABLE:
         app.add_handler(CommandHandler("posignal", posignal_cmd))
+        app.add_handler(CommandHandler("pocookie", pocookie_cmd))
 
     # Callbacks — main menu
     app.add_handler(CallbackQueryHandler(main_algo_callback, pattern=r"^main_algo$"))

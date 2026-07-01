@@ -1,39 +1,39 @@
 """
 Pocket Option Signal Scraper
 
-Scrapes real-time trading signals from Pocket Option's demo trading page.
+Scrapes real-time trading signals from Pocket Option's Signals tab.
 
-Uses Selenium (headless Chrome) to:
-1. Start a PO demo session (one-click or email/password)
-2. Navigate to the Signals tab
-3. Extract signal recommendation for the current asset
+STRATEGY (in order of preference):
+1. Load saved cookies from ~/.po_cookies.json (fast, no login needed)
+2. Login with PO_EMAIL / PO_PASSWORD env vars (uses undetected-chromedriver)
+3. Fall back to demo mode (no signals, only basic trading view)
 
-If the demo one-click account can't access signals (locked for unregistered users),
-try credentials from PO_EMAIL / PO_PASSWORD environment variables.
+If credential login fails due to reCAPTCHA, you can:
+  python -c "from scraper import inject_cookies; inject_cookies('path/to/cookies.json')"
+After manually logging into https://pocketoption.com in your own browser
+and exporting cookies as JSON (use EditThisCookie extension or similar).
 
 Usage:
     from scraper import get_po_signal
-    result = get_po_signal()
-    print(result["signal"])  # "BUY", "SELL", "NEUTRAL", or "UNKNOWN"
+    result = get_po_signal("EUR/USD")
+    print(result["signal"])  # "STRONG_BUY", "BUY", etc.
+
+Requires: undetected-chromedriver, selenium
 """
 
 import json
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import undetected_chromedriver as uc
 
 logger = logging.getLogger(__name__)
 
 PO_BASE = "https://pocketoption.com"
-# Known English → enum mapping for PO signals
 SIGNAL_MAP = {
     "Active uptrend": "STRONG_BUY",
     "Uptrend": "BUY",
@@ -42,12 +42,15 @@ SIGNAL_MAP = {
     "No prediction": "NEUTRAL",
 }
 
-_driver: Optional[webdriver.Chrome] = None
+_driver: Optional[uc.Chrome] = None
+COOKIES_PATH = Path.home() / ".po_cookies.json"
 
 
-def _make_opts() -> Options:
-    opts = Options()
-    opts.add_argument("--headless=new")
+def _make_opts(headless: bool = True) -> uc.ChromeOptions:
+    """Build Chrome options for undetected-chromedriver."""
+    opts = uc.ChromeOptions()
+    if headless:
+        opts.add_argument("--headless=new")
     opts.add_argument("--no-sandbox")
     opts.add_argument("--disable-gpu")
     opts.add_argument("--disable-blink-features=AutomationControlled")
@@ -60,15 +63,28 @@ def _make_opts() -> Options:
     proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
     if proxy:
         opts.add_argument(f"--proxy-server={proxy}")
-    opts.add_experimental_option("excludeSwitches", ["enable-automation"])
-    opts.add_experimental_option("useAutomationExtension", False)
     return opts
 
 
-def _get_driver() -> webdriver.Chrome:
+def _copy_chromedriver() -> str:
+    """Copy system chromedriver to writable location for undetected to patch."""
+    import shutil
+    local_driver = str(Path.home() / ".local/share/uc_chromedriver_scraper")
+    target = Path(local_driver)
+    if not target.exists():
+        shutil.copy2("/usr/bin/chromedriver", local_driver)
+        target.chmod(0o755)
+    return local_driver
+
+
+def _get_driver(headless: bool = True) -> uc.Chrome:
     global _driver
     if _driver is None:
-        _driver = webdriver.Chrome(options=_make_opts())
+        _driver = uc.Chrome(
+            options=_make_opts(headless=headless),
+            use_subprocess=True,
+            driver_executable_path=_copy_chromedriver(),
+        )
     return _driver
 
 
@@ -80,94 +96,190 @@ def close_driver():
         except Exception:
             pass
         _driver = None
+    # Also clean up driver binary
+    local = Path.home() / ".local/share/uc_chromedriver_scraper"
+    if local.exists():
+        local.unlink()
 
 
-def _demo_login(driver: webdriver.Chrome) -> bool:
-    """Navigate to try-demo which auto-creates a demo account."""
-    driver.set_page_load_timeout(25)
+# ---- Cookie persistence ----
+
+def _save_cookies(driver: uc.Chrome):
+    """Save browser cookies to disk for reuse."""
     try:
-        driver.get(f"{PO_BASE}/en/cabinet/try-demo/")
+        cookies = driver.get_cookies()
+        COOKIES_PATH.write_text(json.dumps(cookies, indent=2))
+        logger.info("Saved %d cookies to %s", len(cookies), COOKIES_PATH)
+    except Exception as e:
+        logger.warning("Failed to save cookies: %s", e)
+
+
+def _load_cookies(driver: uc.Chrome) -> bool:
+    """Load saved cookies into the browser. Returns True if any were loaded."""
+    if not COOKIES_PATH.exists():
+        return False
+    try:
+        # Must be on the domain first
+        driver.get(PO_BASE)
+        time.sleep(3)
     except Exception:
+        # Timeout is OK, we just need to be on the domain for add_cookie
         pass
-    time.sleep(5)
-    return "try-demo" in driver.current_url
-
-
-def _cred_login(driver: webdriver.Chrome, email: str, password: str) -> bool:
-    """Log into an existing account via the login page."""
-    driver.set_page_load_timeout(20)
     try:
-        driver.get(f"{PO_BASE}/en/login/")
-    except Exception:
-        pass
-    time.sleep(3)
+        cookies = json.loads(COOKIES_PATH.read_text())
+        added = 0
+        for c in cookies:
+            try:
+                driver.add_cookie(c)
+                added += 1
+            except Exception:
+                pass
+        time.sleep(2)
+        logger.info("Loaded %d/%d cookies", added, len(cookies))
+        return added > 0
+    except Exception as e:
+        logger.warning("Failed to load cookies: %s", e)
+        return False
 
+
+def _is_logged_in(driver: uc.Chrome) -> bool:
+    """Check if we're on an authenticated page."""
     try:
-        e_input = driver.find_element(By.NAME, "email")
-        p_input = driver.find_element(By.NAME, "password")
-        e_input.clear()
-        e_input.send_keys(email)
-        p_input.clear()
-        p_input.send_keys(password)
-        btn = driver.find_element(By.XPATH, "//button[@type='submit']")
-        btn.click()
-        time.sleep(5)
-        return "cabinet" in driver.current_url or "demo-high-low" in driver.current_url
+        driver.get(f"{PO_BASE}/en/cabinet/")
+        time.sleep(4)
+        url = driver.current_url
+        return any(kw in url for kw in ["cabinet", "demo-high-low"])
     except Exception:
         return False
 
 
-def _dismiss_overlays(driver: webdriver.Chrome):
+# ---- Login strategies ----
+
+def _login_with_creds(driver: uc.Chrome, email: str, password: str) -> bool:
+    """Log into an existing account via the login form."""
+    driver.set_page_load_timeout(30)
+    try:
+        driver.get(f"{PO_BASE}/en/login/")
+        time.sleep(4)
+    except Exception:
+        pass
+
+    try:
+        # Check if login page loaded
+        page_text = driver.find_element("tag name", "body").text[:200]
+        if "login" not in page_text.lower() and "sign in" not in page_text.lower():
+            logger.warning("Login page didn't load properly: %s", page_text[:80])
+            return False
+
+        # Fill form
+        driver.find_element("name", "email").send_keys(email)
+        driver.find_element("name", "password").send_keys(password)
+        time.sleep(2)
+
+        # Submit
+        driver.find_element("xpath", "//button[@type='submit']").click()
+        time.sleep(10)
+
+        logged_in = any(kw in driver.current_url for kw in ["cabinet", "demo-high-low"])
+        if logged_in:
+            _save_cookies(driver)
+        return logged_in
+    except Exception as e:
+        logger.warning("Credential login failed: %s", e)
+        return False
+
+
+def _demo_login(driver: uc.Chrome) -> bool:
+    """Navigate to try-demo which auto-creates a demo account."""
+    driver.set_page_load_timeout(30)
+    try:
+        driver.get(f"{PO_BASE}/en/cabinet/try-demo/")
+        time.sleep(8)
+    except Exception:
+        pass
+    url = driver.current_url
+    return any(kw in url for kw in ["try-demo", "demo-high-low", "cabinet"])
+
+
+# ---- UI helpers ----
+
+def _dismiss_overlays(driver: uc.Chrome):
     """Dismiss tutorial / expiry overlays."""
-    for text in ["Continue demo trading", "Start", "Skip", "Close"]:
+    for text in ["Continue demo trading", "Start", "Skip", "Close", "X"]:
         try:
-            el = driver.find_element(By.XPATH, f"//*[contains(text(), '{text}')]")
-            if el.is_displayed():
-                driver.execute_script("arguments[0].click();", el)
-                time.sleep(0.5)
+            for el in driver.find_elements("xpath", f"//*[contains(text(), '{text}')]"):
+                if el.is_displayed():
+                    driver.execute_script("arguments[0].click();", el)
+                    time.sleep(0.5)
         except Exception:
             pass
 
 
-def _click_sidebar_tab(driver: webdriver.Chrome, label: str) -> bool:
+def _click_sidebar_tab(driver: uc.Chrome, label: str) -> bool:
     """Click a sidebar tab like 'Signals', 'Trades', etc."""
     for xpath in [
         f"//*[text()='{label}']",
         f"//*[contains(text(), '{label}')]",
     ]:
-        els = driver.find_elements(By.XPATH, xpath)
-        for el in els:
+        for el in driver.find_elements("xpath", xpath):
             try:
                 driver.execute_script("arguments[0].click();", el)
-                time.sleep(1.5)
+                time.sleep(3)
                 return True
             except Exception:
                 continue
     return False
 
 
-def _get_current_asset(driver: webdriver.Chrome) -> str:
-    """Extract the currently displayed asset."""
+def _get_current_asset(driver: uc.Chrome) -> str:
+    """Extract the currently displayed asset symbol."""
     try:
         el = driver.find_element(
-            By.XPATH,
+            "xpath",
             "//*[contains(@class, 'current-symbol') or "
             "contains(@class, 'instrument')]",
         )
         return el.text.strip()
     except Exception:
         pass
-    body = driver.find_element(By.TAG_NAME, "body").text
+    # Fallback: scan body text for symbol patterns
+    body = driver.find_element("tag name", "body").text
     for line in body.split("\n"):
-        if "/" in line and len(line.strip()) < 20:
-            return line.strip()
+        line = line.strip()
+        if "/" in line and len(line) < 20:
+            return line
     return "unknown"
 
 
-def _parse_signal(driver: webdriver.Chrome) -> dict:
+def _switch_asset(driver: uc.Chrome, pair: str) -> bool:
+    """Try to switch the displayed asset to the requested pair."""
+    try:
+        sel = driver.find_element(
+            "xpath",
+            "//*[contains(@class, 'current-symbol') or "
+            "contains(@class, 'instrument')]",
+        )
+        sel.click()
+        time.sleep(1)
+        inp = driver.find_element(
+            "xpath",
+            "//input[@type='text' or contains(@class, 'search')]",
+        )
+        inp.clear()
+        inp.send_keys(pair)
+        time.sleep(1.5)
+        item = driver.find_element("xpath", f"//*[contains(text(), '{pair}')]")
+        item.click()
+        time.sleep(2)
+        return True
+    except Exception:
+        return False
+
+
+def _parse_signal(driver: uc.Chrome) -> dict:
     """Parse signal data from the DOM.
 
-    Returns dict with keys: signal (BUY/SELL/etc), raw_text, locked.
+    Returns dict with keys: signal, raw_text, locked.
     """
     result = {
         "signal": "UNKNOWN",
@@ -175,16 +287,18 @@ def _parse_signal(driver: webdriver.Chrome) -> dict:
         "locked": False,
     }
 
-    body_text = driver.find_element(By.TAG_NAME, "body").text
+    time.sleep(2)
+    body_text = driver.find_element("tag name", "body").text
 
     # Check for "registered users only" message
     if "registered users only" in body_text.lower() or "complete account registration" in body_text.lower():
         result["locked"] = True
         result["raw_text"] = (
-            "⚠️ PO signals require a real account login.\n"
-            "Pocket Option uses reCAPTCHA which blocks automated logins.\n"
-            "Please log into your PO account manually via a real browser "
-            "and check the Signals tab."
+            "⚠️ سیگنال‌های PO فقط برای حساب‌های واقعی در دسترسه.\n"
+            "Pocket Option از reCAPTCHA استفاده می‌کنه "
+            "که لاگین خودکار رو مسدود می‌کنه.\n"
+            "راهکار: از مرورگر خودت وارد حساب PO بشو، "
+            "کوکی‌ها رو Export کن، و فایل رو به bot بده."
         )
         return result
 
@@ -222,11 +336,50 @@ def _parse_signal(driver: webdriver.Chrome) -> dict:
     return result
 
 
+# ---- Public API ----
+
+def ensure_session(max_retries: int = 2) -> tuple:
+    """Try to establish a PO session. Returns (driver, is_logged_in, account_type).
+
+    account_type is 'real', 'demo', or None.
+    This can be called separately to pre-warm the session before scraping signals.
+    """
+    driver = _get_driver()
+    logged_in = False
+    account_type = None
+
+    for attempt in range(max_retries + 1):
+        # Try saved cookies first
+        if attempt == 0 and COOKIES_PATH.exists():
+            if _load_cookies(driver) and _is_logged_in(driver):
+                logged_in = True
+                account_type = "real"
+                break
+
+        # Try credential login
+        email = os.environ.get("PO_EMAIL")
+        password = os.environ.get("PO_PASSWORD")
+        if email and password and _login_with_creds(driver, email, password):
+            logged_in = True
+            account_type = "real"
+            break
+
+        # Fall back to demo
+        if _demo_login(driver):
+            logged_in = True
+            account_type = "demo"
+            break
+
+        time.sleep(2)
+
+    return driver, logged_in, account_type
+
+
 def get_po_signal(pair: str = None, force_new: bool = False) -> dict:
     """Scrape the current PO signal for the selected asset.
 
     Args:
-        pair: Asset pair (e.g. "EUR/USD") — used for display only.
+        pair: Asset pair (e.g. "EUR/USD") — switches to that asset if given.
         force_new: Restart browser session.
 
     Returns:
@@ -241,37 +394,48 @@ def get_po_signal(pair: str = None, force_new: bool = False) -> dict:
         "raw_text": "",
         "locked": False,
         "error": None,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     try:
-        driver = _get_driver()
-
-        # Prefer real account credentials if available
-        email = os.environ.get("PO_EMAIL")
-        password = os.environ.get("PO_PASSWORD")
-        logged_in = False
-        if email and password:
-            logged_in = _cred_login(driver, email, password)
-            if not logged_in:
-                result["error"] = "Failed to log in with credentials"
-                return result
-        else:
-            # Fall back to demo one-click
-            logged_in = _demo_login(driver)
-
+        driver, logged_in, account_type = ensure_session()
         if not logged_in:
-            result["error"] = "Failed to create session"
+            result["error"] = "Could not connect to Pocket Option. Check your proxy/VPN."
             return result
+
+        result["account_type"] = account_type
+
+        # Try navigating to cabinet (real account) or stay on demo
+        if account_type == "real":
+            try:
+                driver.get(f"{PO_BASE}/en/cabinet/")
+                time.sleep(4)
+            except Exception:
+                pass
+        elif account_type == "demo":
+            try:
+                driver.get(f"{PO_BASE}/en/cabinet/try-demo/")
+                time.sleep(4)
+            except Exception:
+                pass
 
         _dismiss_overlays(driver)
 
+        # Switch asset if requested
+        if pair:
+            result["symbol"] = pair
+            _switch_asset(driver, pair)
+
+        # Get current asset display name
         asset = _get_current_asset(driver)
-        result["symbol"] = asset
+        if asset and asset != "unknown":
+            result["symbol"] = asset
+
+        _dismiss_overlays(driver)
 
         # Open Signals tab
         if not _click_sidebar_tab(driver, "Signals"):
-            result["error"] = "Could not find Signals tab"
+            result["error"] = "Could not find Signals tab on the page"
             return result
 
         _dismiss_overlays(driver)
@@ -287,7 +451,42 @@ def get_po_signal(pair: str = None, force_new: bool = False) -> dict:
     return result
 
 
-# ---- Signal cache for quick display (avoids Selenium each time) ----
+# ---- Cookie helper for user ----
+
+def inject_cookies(cookies_path: str = None) -> str:
+    """Inject cookies from a JSON file exported from the user's own browser.
+
+    Args:
+        cookies_path: Path to cookies JSON file. If None, prompts user.
+
+    The cookies file should be an array of cookie objects with:
+        name, value, domain, path, httpOnly, secure, sameSite, expirationDate
+
+    Export from Chrome using EditThisCookie or similar extension.
+    """
+    if cookies_path:
+        src = Path(cookies_path)
+    else:
+        src = COOKIES_PATH
+
+    if not src.exists():
+        return f"❌ File not found: {src}"
+
+    try:
+        cookies = json.loads(src.read_text())
+        # Validate structure
+        if not isinstance(cookies, list):
+            return "❌ Invalid cookie format: expected array of cookie objects"
+
+        COOKIES_PATH.write_text(json.dumps(cookies, indent=2))
+        return f"✅ Loaded {len(cookies)} cookies from {src}\nNow run the bot and it will use these cookies."
+
+    except Exception as e:
+        return f"❌ Failed to load cookies: {e}"
+
+
+# ---- Cache ----
+
 _last_signal_cache: dict = {}
 
 
@@ -296,7 +495,7 @@ def get_cached_po_signal(pair: str = None, max_age_seconds: int = 300) -> dict:
     cache_key = pair or "current"
     cached = _last_signal_cache.get(cache_key)
     if cached:
-        age = (datetime.utcnow() - datetime.fromisoformat(cached["timestamp"])).total_seconds()
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(cached["timestamp"])).total_seconds()
         if age < max_age_seconds:
             return cached
 
@@ -310,5 +509,6 @@ if __name__ == "__main__":
     import sys
 
     pair = sys.argv[1] if len(sys.argv) > 1 else None
-    print(json.dumps(get_po_signal(pair, force_new=True), indent=2))
+    res = get_po_signal(pair, force_new=True)
+    print(json.dumps(res, indent=2, ensure_ascii=False))
     close_driver()
