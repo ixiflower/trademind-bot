@@ -46,6 +46,18 @@ AVAILABLE_PAIRS = {
     "TON/USD": {"type": "crypto", "binance_symbol": "TONUSDT", "decimal_places": 3},
     "DASH/USD": {"type": "crypto", "binance_symbol": "DASHUSDT", "decimal_places": 2},
 
+    # ============ Indices (from Pocket Option) ============
+    "AUS200": {"type": "indices", "otc": True, "yfinance_symbol": "^AXJO", "decimal_places": 2},
+    "UK100": {"type": "indices", "otc": True, "yfinance_symbol": "^FTSE", "decimal_places": 2},
+    "DE30": {"type": "indices", "otc": True, "yfinance_symbol": "^GDAXI", "decimal_places": 2},
+    "DJI30": {"type": "indices", "otc": True, "yfinance_symbol": "^DJI", "decimal_places": 2},
+    "EU35": {"type": "indices", "otc": True, "yfinance_symbol": "^STOXX50E", "decimal_places": 2},
+    "EU50": {"type": "indices", "otc": True, "yfinance_symbol": "^STOXX", "decimal_places": 2},
+    "F40": {"type": "indices", "otc": True, "yfinance_symbol": "^FCHI", "decimal_places": 2},
+    "JP225": {"type": "indices", "otc": True, "yfinance_symbol": "^N225", "decimal_places": 2},
+    "US100": {"type": "indices", "otc": True, "yfinance_symbol": "^NDX", "decimal_places": 2},
+    "SP500": {"type": "indices", "otc": True, "yfinance_symbol": "^GSPC", "decimal_places": 2},
+
     # ============ Forex (via Yahoo Finance) ============
     "EUR/USD": {"type": "forex", "yfinance_symbol": "EURUSD=X", "decimal_places": 5},
     "GBP/USD": {"type": "forex", "yfinance_symbol": "GBPUSD=X", "decimal_places": 5},
