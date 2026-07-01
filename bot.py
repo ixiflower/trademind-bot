@@ -1,6 +1,7 @@
 """
 TradeMind Signal Bot - Telegram Bot
-AI-powered trading signals for Pocket Option and binary options
+AI-powered trading signals for binary options
+Persian UI + chat cleanup + back navigation everywhere
 """
 import os
 import asyncio
@@ -10,13 +11,12 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup,
-    InputMediaPhoto, InlineQueryResultArticle,
-    InputTextMessageContent, InlineQueryResultsButton,
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto,
+    InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultsButton
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
-    filters, ContextTypes, CallbackQueryHandler, InlineQueryHandler,
+    filters, ContextTypes, CallbackQueryHandler, InlineQueryHandler
 )
 from telegram.constants import ParseMode
 
@@ -29,6 +29,13 @@ from config import (
 )
 from signal_engine import generate_signal, generate_full_analysis
 
+# ---- Optional Pocket Option scraper (slow, runs in thread) ----
+try:
+    import scraper as _po_scraper
+    _PO_AVAILABLE = True
+except ImportError:
+    _PO_AVAILABLE = False
+
 # ---- Setup ----
 
 logging.basicConfig(
@@ -39,6 +46,15 @@ logger = logging.getLogger("TradeMindBot")
 
 SESSION_PATH = Path(__file__).parent / "trademind_bot.session"
 DATA_DIR = Path(__file__).parent / "data"
+STATIC_DIR = Path(__file__).parent / "static"
+
+def _photo(caption: str, reply_markup: InlineKeyboardMarkup | None = None):
+    """Helper: create InputMediaPhoto with a caption for editing."""
+    return InputMediaPhoto(
+        media=open(STATIC_DIR / "welcome.jpg", "rb"),
+        caption=caption,
+        parse_mode=ParseMode.MARKDOWN,
+    )
 DATA_DIR.mkdir(exist_ok=True)
 SUBSCRIPTIONS_FILE = DATA_DIR / "subscriptions.json"
 
@@ -60,12 +76,91 @@ def save_subscriptions(data: dict):
     SUBSCRIPTIONS_FILE.write_text(json.dumps(data, indent=2))
 
 
-# =======================================================
+# ========================================================
+# CHAT CLEANUP
+# ========================================================
+
+async def _clean_prev_msg(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Delete previous bot message to keep chat clean."""
+    last_msg_id = context.user_data.get("last_bot_msg_id")
+    last_chat_id = context.user_data.get("last_bot_chat_id")
+    if last_msg_id and last_chat_id and last_chat_id == chat_id:
+        try:
+            await context.bot.delete_message(chat_id=last_chat_id, message_id=last_msg_id)
+        except Exception:
+            pass
+
+
+async def _edit_or_send(
+    update: Update, context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int, photo_path: Path, caption: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+):
+    """Edit the last tracked message if available, otherwise send a new photo.
+    Returns the sent/edited message for tracking.
+    """
+    last_msg_id = context.user_data.get("last_bot_msg_id")
+    last_chat_id = context.user_data.get("last_bot_chat_id")
+
+    if last_msg_id and last_chat_id and last_chat_id == chat_id:
+        # Edit existing tracked message
+        media = InputMediaPhoto(
+            media=open(photo_path, "rb"),
+            caption=caption,
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        try:
+            msg = await context.bot.edit_message_media(
+                chat_id=chat_id,
+                message_id=last_msg_id,
+                media=media,
+                reply_markup=reply_markup,
+            )
+            return msg
+        except Exception:
+            pass  # fall through to send new
+
+    # Fallback: send new photo
+    with open(photo_path, "rb") as f:
+        sent = await update.message.reply_photo(
+            photo=f, caption=caption,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup,
+        )
+    return sent
+
+async def _track_msg(context: ContextTypes.DEFAULT_TYPE, sent):
+    """Remember sent message for future cleanup."""
+    context.user_data["last_bot_msg_id"] = sent.message_id
+    context.user_data["last_bot_chat_id"] = sent.chat_id
+
+async def _del_user_msg(update: Update):
+    """Delete user's command message."""
+    try:
+        await update.message.delete()
+    except Exception:
+        pass
+
+
+# ========================================================
 # INLINE KEYBOARD BUILDERS
-# =======================================================
+# ========================================================
+
+def main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Main menu with algorithm and scraper."""
+    rows = [
+        [
+            InlineKeyboardButton("🟣 الگوریتم", callback_data="main_algo"),
+        ],
+        [
+            InlineKeyboardButton("🔵 Website Scraper", callback_data="main_scraper"),
+        ],
+    ]
+    return InlineKeyboardMarkup(rows)
+
 
 def category_keyboard() -> InlineKeyboardMarkup:
-    """Main category selection keyboard (2 rows of 2)."""
+    """Category selection keyboard (2 rows of 2, plus back to main)."""
     rows = []
     cats = CATEGORY_ORDER
     for i in range(0, len(cats), 2):
@@ -77,6 +172,7 @@ def category_keyboard() -> InlineKeyboardMarkup:
                 callback_data=f"cat_{cat}"
             ))
         rows.append(row)
+    rows.append([InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -91,6 +187,8 @@ def pairs_keyboard(category: str, page: int = 0) -> InlineKeyboardMarkup:
     page_pairs = pairs[start:end]
 
     rows = []
+    # Search button at top
+    rows.append([InlineKeyboardButton("🔍 جستجو / Search", switch_inline_query_current_chat="")])
     for i in range(0, len(page_pairs), PAIRS_PER_ROW):
         row = []
         for pair in page_pairs[i:i+PAIRS_PER_ROW]:
@@ -102,13 +200,13 @@ def pairs_keyboard(category: str, page: int = 0) -> InlineKeyboardMarkup:
     nav = []
     if total_pages > 1:
         if page > 0:
-            nav.append(InlineKeyboardButton("◀️ Prev", callback_data=f"pg_{category}_{page-1}"))
+            nav.append(InlineKeyboardButton("◀️ قبلی", callback_data=f"pg_{category}_{page-1}"))
         nav.append(InlineKeyboardButton(f"{page+1}/{total_pages}", callback_data="noop"))
         if page < total_pages - 1:
-            nav.append(InlineKeyboardButton("Next ▶️", callback_data=f"pg_{category}_{page+1}"))
+            nav.append(InlineKeyboardButton("بعدی ▶️", callback_data=f"pg_{category}_{page+1}"))
     rows.append(nav)
 
-    rows.append([InlineKeyboardButton("🔙 Back to Categories", callback_data="back_cat")])
+    rows.append([InlineKeyboardButton("🔙 بازگشت به دسته\u200cبندی", callback_data="back_cat")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -132,13 +230,13 @@ def timeframe_keyboard(pair: str, active_tf: str = None) -> InlineKeyboardMarkup
         for row in [tf_config[:3], tf_config[3:]]
     ]
     rows.append([
-        InlineKeyboardButton("🔙 Back to Pairs", callback_data=f"back_pairs_{pair}"),
+        InlineKeyboardButton("🔙 بازگشت به جفت‌ارزها", callback_data=f"back_pairs_{pair}"),
     ])
     return InlineKeyboardMarkup(rows)
 
 
 def signal_timeframe_keyboard(pair: str, active_tf: str) -> InlineKeyboardMarkup:
-    """Compact timeframe switcher shown below the signal."""
+    """Compact timeframe switcher shown below the signal + back button."""
     tf_config = [
         ("1m", "1m ⚡"),
         ("5m", "5m 🔥"),
@@ -156,21 +254,19 @@ def signal_timeframe_keyboard(pair: str, active_tf: str) -> InlineKeyboardMarkup
         ]
         for row in [tf_config[:3], tf_config[3:]]
     ]
+    rows.append([
+        InlineKeyboardButton("🔙 بازگشت به جفت‌ارزها", callback_data=f"back_pairs_{pair}"),
+    ])
     return InlineKeyboardMarkup(rows)
 
 
-# =======================================================
-# SIGNAL FORMATTING (NEW STRUCTURED FORMAT)
-# =======================================================
+# ========================================================
+# SIGNAL FORMATTING (Persian)
+# ========================================================
 
 def format_signal(signal: dict) -> str:
     """
-    Structured signal format matching user's requested layout:
-      - Signal Info
-      - Market Setting (with Risk bar)
-      - Technical Overview
-      - Probabilities (single bar + Bot favors)
-      - Bot Signal
+    Structured signal format in Persian.
     """
     direction = signal["direction"]
     confidence = signal["confidence"]
@@ -182,7 +278,7 @@ def format_signal(signal: dict) -> str:
     # Display name with (OTC) if applicable
     display_pair = get_pair_display(pair)
 
-    # Direction
+    # Direction in Persian
     if direction == "CALL":
         dir_emoji = "🟢"
         dir_text = "خرید (CALL) 📗"
@@ -203,8 +299,10 @@ def format_signal(signal: dict) -> str:
     # Trend
     trend = signal.get("trend", "neutral")
 
-    # Volatility
+    # Volatility in Persian
     vol = signal.get("volatility", "medium").upper()
+    vol_map = {"HIGH": "بالا", "MEDIUM": "متوسط", "LOW": "پایین"}
+    vol_fa = vol_map.get(vol, vol)
     vol_emoji = "⚡" if vol == "HIGH" else "🌊" if vol == "MEDIUM" else "💤"
 
     # Candlestick pattern
@@ -219,6 +317,8 @@ def format_signal(signal: dict) -> str:
     else:
         risk_score = 5
         risk_label = "MEDIUM 🟡"
+    # Translate risk label
+    risk_label = risk_label.replace("LOW 🟢", "کم 🟢").replace("MEDIUM 🟡", "متوسط 🟡").replace("HIGH 🔴", "زیاد 🔴")
     risk_bar_fill = "━" * risk_score
     risk_bar_empty = "─" * (10 - risk_score)
     risk_str = f"┃{risk_bar_fill}{risk_bar_empty}┃ {risk_score}/10 {risk_label}"
@@ -234,20 +334,20 @@ def format_signal(signal: dict) -> str:
         clean = d.strip()
         tech_lines.append(f"  {clean}")
 
-    tech_overview = "\n".join(tech_lines) if tech_lines else "  No data"
+    tech_overview = "\n".join(tech_lines) if tech_lines else "  بدون داده"
 
     # Probabilities section
     if direction == "CALL":
         prob_value = confidence
-        prob_label = "CALL (BUY)"
+        prob_label = "خرید (CALL)"
         prob_emoji = "🟢"
     elif direction == "PUT":
         prob_value = confidence
-        prob_label = "PUT (SELL)"
+        prob_label = "فروش (PUT)"
         prob_emoji = "🔴"
     else:
         prob_value = confidence
-        prob_label = "NEUTRAL"
+        prob_label = "خنثی"
         prob_emoji = "⚪"
 
     bar_count = max(1, min(10, prob_value // 10))
@@ -255,15 +355,14 @@ def format_signal(signal: dict) -> str:
     bar_empty = "─" * (10 - bar_count)
 
     # Expiry based on specific timeframe
-    expiry_map = {
-        "1m": ["1min", "5min"],
-        "5m": ["5min", "15min"],
-        "15m": ["15min", "30min"],
-        "30m": ["30min", "1h"],
-        "1h": ["1h"],
+    expiry_for_tf = {
+        "1m": "1min",
+        "5m": "5min",
+        "15m": "15min",
+        "30m": "30min",
+        "1h": "1h",
     }
-    expiry_list = expiry_map.get(tf, ["Auto"])
-    expiry_str = ", ".join(expiry_list[:2])
+    expiry_str = expiry_for_tf.get(tf, "Auto")
 
     # Timestamp
     ts = signal.get("timestamp", datetime.now(timezone.utc))
@@ -285,7 +384,7 @@ def format_signal(signal: dict) -> str:
     )
 
     if candle_str:
-        msg += f"🕯 **Pattern:** {candle_str}\n"
+        msg += f"🕯 **الگو:** {candle_str}\n"
 
     msg += (
         f"⚖️ **ریسک:** `{risk_str}`\n"
@@ -305,9 +404,9 @@ def format_signal(signal: dict) -> str:
 
 
 def format_analysis(pair_name: str, analysis: dict) -> str:
-    """Format full multi-timeframe analysis."""
+    """Format full multi-timeframe analysis in Persian."""
     if not analysis or not analysis.get("signals"):
-        return f"❌ Could not analyze **{pair_name}**. Data unavailable."
+        return f"❌ نمی‌توان **{pair_name}** را تحلیل کرد. داده در دسترس نیست."
 
     display_pair = get_pair_display(pair_name)
     pair_type = analysis.get("type", "unknown").upper()
@@ -317,16 +416,16 @@ def format_analysis(pair_name: str, analysis: dict) -> str:
 
     now = datetime.now(timezone.utc)
     msg = (
-        f"╔═══ 📊 **MARKET ANALYSIS** ═══╗\n\n"
+        f"╔═══ 📊 **تحلیل بازار** ═══╗\n\n"
         f"**{display_pair}** | `{pair_type}`\n"
     )
     if price:
-        msg += f"💵 Price: `{price:.{dec}f}`\n"
+        msg += f"💵 قیمت: `{price:.{dec}f}`\n"
     msg += f"⏰ `{now.strftime('%Y-%m-%d %H:%M UTC')}`\n\n"
 
-    msg += "**📈 Multi-Timeframe Overview:**\n"
+    msg += "**📈 نمای چند تایم‌فریم:**\n"
     msg += "```\n"
-    msg += f"{'TF':<6} {'Signal':<8} {'Conf':<6} {'Trend':<12}\n"
+    msg += f"{'TF':<6} {'سیگنال':<8} {'اطمینان':<6} {'روند':<12}\n"
     msg += "-" * 35 + "\n"
 
     tf_signals = analysis.get("signals", {})
@@ -344,38 +443,49 @@ def format_analysis(pair_name: str, analysis: dict) -> str:
     if primary:
         msg += format_signal(primary)
 
-    msg += "\n\n⚠️ *Educational purposes only. DYOR!*"
+    msg += "\n\n⚠️ *فقط برای اهداف آموزشی. خودت تحقیق کن!*"
     return msg
 
 
 def format_pairs_list() -> str:
-    """Format available trading pairs grouped by category."""
+    """Format available trading pairs grouped by category (Persian)."""
     msg = PAIRS_LIST_HEADER + "\n"
 
     for cat in CATEGORY_ORDER:
         cd = CATEGORY_DISPLAY[cat]
         pairs = get_pairs_by_category(cat)
         if pairs:
-            display_names = [get_pair_display(p) for p in pairs]
             msg += f"\n{cd['emoji']} **{cd['label']}**\n"
-            msg += "`" + ", ".join(display_names) + "`\n"
 
-    msg += "\n🔹 `/signal BTC/USD` or just type the pair!"
+            # For 'other', show sub-categories
+            if cat == "other":
+                for sub_cat, sub_label in [("crypto", "ارز دیجیتال"), ("stock", "سهام (OTC)"), ("commodity", "کالا"), ("indices", "شاخص (Indices)")]:
+                    sub_pairs = sorted([p for p, info in AVAILABLE_PAIRS.items() if info.get("type") == sub_cat])
+                    if sub_pairs:
+                        display_names = [get_pair_display(p) for p in sub_pairs]
+                        msg += f"  **{sub_label}:** `{', '.join(display_names)}`\n"
+            else:
+                display_names = [get_pair_display(p) for p in pairs]
+                msg += "`" + ", ".join(display_names) + "`\n"
+
+    msg += "\n🔹 `/signal BTC/USD` یا اسم جفت‌ارز رو تایپ کن!"
     return msg
 
 
-# =======================================================
+# ========================================================
 # HANDLERS
-# =======================================================
+# ========================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await _clean_prev_msg(context, chat_id)
     await _del_user_msg(update)
+
     with open(STATIC_DIR / "welcome.jpg", "rb") as f:
         sent = await update.message.reply_photo(
             photo=f,
-            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\nاز منوی زیر انتخاب کن:",
+            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\n"
+                    "از منوی زیر انتخاب کن:",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=main_menu_keyboard(),
         )
@@ -386,9 +496,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await _clean_prev_msg(context, chat_id)
     await _del_user_msg(update)
+
     with open(STATIC_DIR / "welcome.jpg", "rb") as f:
         sent = await update.message.reply_photo(
-            photo=f, caption=HELP_MESSAGE,
+            photo=f,
+            caption=HELP_MESSAGE,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=main_menu_keyboard(),
         )
@@ -399,9 +511,11 @@ async def pairs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     await _clean_prev_msg(context, chat_id)
     await _del_user_msg(update)
+
     with open(STATIC_DIR / "category.jpg", "rb") as f:
         sent = await update.message.reply_photo(
-            photo=f, caption=format_pairs_list(),
+            photo=f,
+            caption=format_pairs_list(),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=category_keyboard(),
         )
@@ -411,33 +525,86 @@ async def pairs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---- Signal Command ----
 
 async def signal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    await _del_user_msg(update)
+
     if not context.args:
         # No pair specified → show category selection
-        await update.message.reply_text(
-            "📊 **یک دسته بازار را انتخاب کنید:**",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=category_keyboard(),
-        )
+        with open(STATIC_DIR / "category.jpg", "rb") as f:
+            sent = await update.message.reply_photo(
+                photo=f,
+                caption="📊 **یک دسته بازار را انتخاب کنید:**",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=category_keyboard(),
+            )
+        await _track_msg(context, sent)
         return
 
     pair = " ".join(context.args).strip().upper()
     pair = normalize_pair(pair)
 
     if pair not in AVAILABLE_PAIRS:
-        await update.message.reply_text(
-            f"❌ جفت‌ارز `{pair}` پیدا نشد!",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=category_keyboard(),
+        sent = await _edit_or_send(
+            update, context, chat_id, STATIC_DIR / "category.jpg",
+            f"❌ جفت‌ارز `{pair}` پیدا نشد!\n"
+            "از دکمه زیر یکی رو انتخاب کن:",
+            category_keyboard(),
         )
+        await _track_msg(context, sent)
         return
 
-    # Pair specified → show timeframe selection
+    # Pair specified → show timeframe selection (edits existing message)
     context.user_data["signal_pair"] = pair
     display = get_pair_display(pair)
-    await update.message.reply_text(
-        f"**{display}** ⏱️ Choose timeframe:",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=timeframe_keyboard(pair),
+    sent = await _edit_or_send(
+        update, context, chat_id, STATIC_DIR / "category.jpg",
+        f"**{display}** ⏱️ تایم‌فریم را انتخاب کنید:",
+        timeframe_keyboard(pair),
+    )
+    await _track_msg(context, sent)
+
+
+# ---- Main Menu Callbacks ----
+
+async def main_algo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Go to algorithm flow — show category selection."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_media(
+        media=InputMediaPhoto(
+            media=open(STATIC_DIR / "category.jpg", "rb"),
+            caption="📊 **یک دسته بازار را انتخاب کنید:**",
+            parse_mode=ParseMode.MARKDOWN,
+        ),
+        reply_markup=category_keyboard(),
+    )
+
+
+async def main_scraper_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Website scraper — show status page."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_media(
+        media=InputMediaPhoto(
+            media=open(STATIC_DIR / "scraper.jpg", "rb"),
+            caption=(
+                "🌐 **Website Scraper**\n\n"
+                f"**Pocket Option Signal Scraper** {'✅' if _PO_AVAILABLE else '❌'}\n\n"
+                "یک اسکرپر مبتنی بر Selenium که:\n"
+                "• وارد دمو Pocket Option می‌شه\n"
+                "• تب سیگنال‌ها رو باز می‌کنه\n"
+                "• نتیجه رو برمی‌گردونه\n\n"
+                "⚠️ سیگنال‌های PO فقط برای کاربران "
+                "واقعی در دسترسه (دمو قفله).\n"
+                "برای تنظیم ایمیل و رمز PO:\n"
+                "`PO_EMAIL` و `PO_PASSWORD`\n\n"
+                "دستور: `/posignal [نماد]`"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+        ),
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")],
+        ]),
     )
 
 
@@ -452,8 +619,8 @@ async def category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     label = cd.get("label", cat)
     emoji = cd.get("emoji", "📊")
 
-    await query.edit_message_text(
-        f"{emoji} **{label}** — Select a pair:",
+    await query.edit_message_caption(
+        caption=f"{emoji} **{label}** — یک جفت‌ارز انتخاب کنید:",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=pairs_keyboard(cat),
     )
@@ -469,8 +636,8 @@ async def pair_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     context.user_data["signal_pair"] = pair
     display = get_pair_display(pair)
 
-    await query.edit_message_text(
-        f"**{display}** ⏱️ Choose timeframe:",
+    await query.edit_message_caption(
+        caption=f"**{display}** ⏱️ تایم‌فریم را انتخاب کنید:",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=timeframe_keyboard(pair),
     )
@@ -485,7 +652,8 @@ async def back_main_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_media(
         media=InputMediaPhoto(
             media=open(STATIC_DIR / "welcome.jpg", "rb"),
-            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\nاز منوی زیر انتخاب کن:",
+            caption="🤖 **به TradeMind Signal Bot خوش آمدی!** 🚀\n\n"
+                    "از منوی زیر انتخاب کن:",
             parse_mode=ParseMode.MARKDOWN,
         ),
         reply_markup=main_menu_keyboard(),
@@ -496,8 +664,8 @@ async def back_cat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Go back to category selection."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
-        "📊 **یک دسته بازار را انتخاب کنید:**",
+    await query.edit_message_caption(
+        caption="📊 **یک دسته بازار را انتخاب کنید:**",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=category_keyboard(),
     )
@@ -510,11 +678,16 @@ async def back_pairs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     pair = query.data.replace("back_pairs_", "")
     info = AVAILABLE_PAIRS.get(pair, {})
-    cat = info.get("type", "crypto")
+    pair_type = info.get("type", "crypto")
+    # Map actual type to display category
+    if pair_type in ("crypto", "stock", "commodity"):
+        cat = "other"
+    else:
+        cat = pair_type
     cd = CATEGORY_DISPLAY.get(cat, {})
 
-    await query.edit_message_text(
-        f"{cd.get('emoji', '📊')} **{cd['label']}** — Select a pair:",
+    await query.edit_message_caption(
+        caption=f"{cd.get('emoji', '📊')} **{cd['label']}** — یک جفت‌ارز انتخاب کنید:",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=pairs_keyboard(cat, page=0),
     )
@@ -535,8 +708,8 @@ async def page_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cd = CATEGORY_DISPLAY.get(cat, {})
     label = cd.get("label", cat)
 
-    await query.edit_message_text(
-        f"{cd.get('emoji', '📊')} **{label}** — Select a pair: (Page {page+1})",
+    await query.edit_message_caption(
+        caption=f"{cd.get('emoji', '📊')} **{label}** — یک جفت‌ارز انتخاب کنید: (صفحه {page+1})",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=pairs_keyboard(cat, page=page),
     )
@@ -556,13 +729,16 @@ async def signal_timeframe_callback(update: Update, context: ContextTypes.DEFAUL
     tf = query.data.replace("tf_", "")
 
     if tf == "cancel":
-        await query.edit_message_text("❌ Cancelled.", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_caption(
+            caption="❌ لغو شد.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
         return
 
     pair = context.user_data.get("signal_pair", "")
     if not pair or pair not in AVAILABLE_PAIRS:
-        await query.edit_message_text(
-            "❌ Session expired! Try /signal again.",
+        await query.edit_message_caption(
+            caption="❌ نشست منقضی شد! دوباره /signal را بزن.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=category_keyboard(),
         )
@@ -571,8 +747,8 @@ async def signal_timeframe_callback(update: Update, context: ContextTypes.DEFAUL
     display = get_pair_display(pair)
 
     # Show loading
-    await query.edit_message_text(
-        f"🔍 Analyzing **{display}** on **{tf}**... ⏳",
+    await query.edit_message_caption(
+        caption=f"🔍 در حال تحلیل **{display}** روی **{tf}**... ⏳",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -587,20 +763,24 @@ async def signal_timeframe_callback(update: Update, context: ContextTypes.DEFAUL
             pair_info = AVAILABLE_PAIRS[pair]
             signal["decimal_places"] = pair_info.get("decimal_places", 5)
             msg = format_signal(signal)
-            await query.edit_message_text(
-                msg, parse_mode=ParseMode.MARKDOWN,
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(STATIC_DIR / "signal.jpg", "rb"),
+                    caption=msg,
+                    parse_mode=ParseMode.MARKDOWN,
+                ),
                 reply_markup=signal_timeframe_keyboard(pair, tf),
             )
         else:
-            await query.edit_message_text(
-                f"❌ Insufficient data for `{pair}` on `{tf}`.",
+            await query.edit_message_caption(
+                caption=f"❌ داده کافی برای `{pair}` روی `{tf}` وجود نداره.",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=category_keyboard(),
             )
     except Exception as e:
         logger.error(f"Error generating signal for {pair} on {tf}: {e}")
-        await query.edit_message_text(
-            f"❌ Error: {str(e)[:100]}",
+        await query.edit_message_caption(
+            caption=f"❌ خطا: {str(e)[:100]}",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=category_keyboard(),
         )
@@ -609,39 +789,142 @@ async def signal_timeframe_callback(update: Update, context: ContextTypes.DEFAUL
 # ---- Analysis Command ----
 
 async def analysis_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
     if not context.args:
-        await update.message.reply_text(
-            "❌ Specify a pair!\nExample: `/analysis BTC/USD`",
+        sent = await update.message.reply_text(
+            "❌ یک جفت‌ارز مشخص کن!\nمثال: `/analysis BTC/USD`",
             parse_mode=ParseMode.MARKDOWN,
+            reply_markup=category_keyboard(),
         )
+        await _track_msg(context, sent)
         return
 
     pair = " ".join(context.args).strip().upper()
     pair = normalize_pair(pair)
 
     if pair not in AVAILABLE_PAIRS:
-        await update.message.reply_text(
-            f"❌ Pair `{pair}` not found!", parse_mode=ParseMode.MARKDOWN
+        sent = await update.message.reply_text(
+            f"❌ جفت‌ارز `{pair}` پیدا نشد!",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=category_keyboard(),
         )
+        await _track_msg(context, sent)
         return
 
-    sent = await update.message.reply_text(f"🔍 Running full analysis on **{pair}**... ⏳", parse_mode=ParseMode.MARKDOWN)
+    sent = await update.message.reply_text(
+        f"🔍 در حال تحلیل کامل **{pair}**... ⏳",
+        parse_mode=ParseMode.MARKDOWN,
+    )
 
     try:
         analysis = generate_full_analysis(pair)
         if analysis:
             msg = format_analysis(pair, analysis)
-            await sent.edit_text(msg, parse_mode=ParseMode.MARKDOWN)
+            await sent.edit_text(msg, parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_main")],
+                ]))
         else:
-            await sent.edit_text(f"❌ Insufficient data for `{pair}`.", parse_mode=ParseMode.MARKDOWN)
+            await sent.edit_text(
+                f"❌ داده کافی برای `{pair}` وجود نداره.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=category_keyboard(),
+            )
     except Exception as e:
         logger.error(f"Error in full analysis for {pair}: {e}")
-        await sent.edit_text(f"❌ Error: {str(e)[:100]}", parse_mode=ParseMode.MARKDOWN)
+        await sent.edit_text(
+            f"❌ خطا: {str(e)[:100]}",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=category_keyboard(),
+        )
+
+
+# ---- PO Signal Scraper Command ----
+
+async def posignal_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Scrape current Pocket Option signal (slow - takes ~20s).
+
+    Uses a headless browser to log into PO demo and read the Signals tab.
+    PO signals require a real registered account (demo shows 'locked').
+    Set PO_EMAIL / PO_PASSWORD env vars for a real account.
+    """
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
+    if not _PO_AVAILABLE:
+        sent = await update.message.reply_text(
+            "❌ ماژول اسکرپر در دسترس نیست.\n"
+            "فایل `scraper.py` وجود نداره یا وابستگی‌هاش نصب نشده.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        await _track_msg(context, sent)
+        return
+
+    sent = await update.message.reply_text(
+        "🔍 **در حال اتصال به Pocket Option...** ⏳\n"
+        "این عملیات حدود ۲۰ ثانیه طول می‌کشه.",
+        parse_mode=ParseMode.MARKDOWN,
+    )
+    await _track_msg(context, sent)
+
+    pair = " ".join(context.args).strip().upper() if context.args else None
+
+    try:
+        # Run scraper in a thread to avoid blocking the event loop
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _po_scraper.get_po_signal, pair, False)
+
+        if result.get("error"):
+            msg = f"❌ **خطا:** {result['error']}"
+        elif result.get("locked"):
+            msg = (
+                "🔒 **سیگنال‌های PO قفل هستند.**\n\n"
+                "دمو یک‌کلیک دسترسی به سیگنال‌ها نداره.\n"
+                "برای استفاده، ایمیل و رمز حساب PO خود را در متغیرهای "
+                "محیطی `PO_EMAIL` و `PO_PASSWORD` تنظیم کن."
+            )
+        else:
+            signal = result.get("signal", "UNKNOWN")
+            signal_emoji = {
+                "STRONG_BUY": "🟢🟢",
+                "BUY": "🟢",
+                "STRONG_SELL": "🔴🔴",
+                "SELL": "🔴",
+                "NEUTRAL": "⚪",
+            }.get(signal, "❓")
+
+            msg = (
+                f"🌐 **سیگنال Pocket Option**\n\n"
+                f"**نماد:** `{result.get('symbol', '?')}`\n"
+                f"**سیگنال:** {signal_emoji} `{signal}`\n"
+                f"**زمان:** `{result.get('timestamp', '?')[:19]}`\n\n"
+                f"📋 **جزئیات:**\n```\n{result.get('raw_text', '')[:300]}\n```"
+            )
+
+        await sent.edit_text(msg, parse_mode=ParseMode.MARKDOWN)
+
+    except Exception as e:
+        logger.exception("PO signal command failed")
+        await sent.edit_text(
+            f"❌ **خطا در دریافت سیگنال PO:**\n`{str(e)[:200]}`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    finally:
+        # Close driver to avoid stale sessions
+        await loop.run_in_executor(None, _po_scraper.close_driver)
 
 
 # ---- Subscribe / Unsubscribe ----
 
 async def subscribe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
     interval = 5
     if context.args:
         try:
@@ -649,60 +932,88 @@ async def subscribe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except ValueError:
             pass
 
-    chat_id = str(update.effective_chat.id)
+    chat_id_str = str(update.effective_chat.id)
     subscriptions = load_subscriptions()
-    subscriptions.setdefault("chats", {})[chat_id] = {
+    subscriptions.setdefault("chats", {})[chat_id_str] = {
         "interval_minutes": interval,
         "user_id": update.effective_user.id,
         "subscribed_at": datetime.now(timezone.utc).isoformat(),
     }
     save_subscriptions(subscriptions)
-    await update.message.reply_text(
-        f"✅ **Subscribed!** 🎯\n\n📨 Signals every **{interval} minute(s)**.\nUse `/unsubscribe` to stop.",
+    sent = await update.message.reply_text(
+        f"✅ **مشترک شدی!** 🎯\n\n"
+        f"📨 ارسال سیگنال هر **{interval} دقیقه**.\n"
+        f"برای لغو از `/unsubscribe` استفاده کن.",
         parse_mode=ParseMode.MARKDOWN,
     )
+    await _track_msg(context, sent)
 
 
 async def unsubscribe_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = str(update.effective_chat.id)
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
+    chat_id_str = str(update.effective_chat.id)
     subscriptions = load_subscriptions()
-    if str(chat_id) in subscriptions.get("chats", {}):
-        del subscriptions["chats"][chat_id]
+    if chat_id_str in subscriptions.get("chats", {}):
+        del subscriptions["chats"][chat_id_str]
         save_subscriptions(subscriptions)
-        await update.message.reply_text("✅ **Unsubscribed.**", parse_mode=ParseMode.MARKDOWN)
+        sent = await update.message.reply_text(
+            "✅ **اشتراک لغو شد.**",
+            parse_mode=ParseMode.MARKDOWN,
+        )
     else:
-        await update.message.reply_text("❌ Not subscribed.", parse_mode=ParseMode.MARKDOWN)
+        sent = await update.message.reply_text(
+            "❌ مشترک نیستی.",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    await _track_msg(context, sent)
 
 
 # ---- Direct Pair Input ----
 
 async def handle_pair_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle messages that look like trading pairs."""
+    """Handle messages that look like trading pairs — send to timeframe selection."""
+    chat_id = update.effective_chat.id
+    await _del_user_msg(update)
+
     text = update.message.text.strip().upper()
+
     if text in AVAILABLE_PAIRS:
         context.user_data["signal_pair"] = text
         display = get_pair_display(text)
-        await update.message.reply_text(
-            f"**{display}** ⏱️ Choose timeframe:",
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=timeframe_keyboard(text),
+        sent = await _edit_or_send(
+            update, context, chat_id, STATIC_DIR / "category.jpg",
+            f"**{display}** ⏱️ تایم‌فریم را انتخاب کنید:",
+            timeframe_keyboard(text),
         )
+        await _track_msg(context, sent)
 
 
 # ---- Unknown Commands ----
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    await _clean_prev_msg(context, chat_id)
+    await _del_user_msg(update)
+
     text = (update.message.text or "").strip()
     if text.startswith("/"):
-        await update.message.reply_text(
-            f"❌ Unknown command `{text.split()[0]}`.\nUse /help to see available commands.",
-            parse_mode=ParseMode.MARKDOWN,
-        )
+        with open(STATIC_DIR / "welcome.jpg", "rb") as f:
+            sent = await update.message.reply_photo(
+                photo=f,
+                caption=f"❌ دستور `{text.split()[0]}` ناشناس است.\n"
+                        "برای مشاهده دستورات از /help استفاده کن.",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=main_menu_keyboard(),
+            )
+        await _track_msg(context, sent)
 
 
-# =======================================================
+# ========================================================
 # PAIR NORMALIZER
-# =======================================================
+# ========================================================
 
 def normalize_pair(pair: str) -> str:
     if "/" in pair:
@@ -723,20 +1034,98 @@ def normalize_pair(pair: str) -> str:
     return pair
 
 
-# =======================================================
+# ---- Inline Query (Real-time Drawer Search) ----
+
+# Emoji per pair type for inline results
+TYPE_EMOJI = {
+    "forex": "💱",
+    "crypto": "₿",
+    "stock": "📈",
+    "commodity": "🛢️",
+    "indices": "📊",
+}
+
+
+async def inline_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle inline queries — real-time drawer search from the input bar.
+
+    User types @botname EUR and sees matching pairs update as they type,
+    like a search drawer sliding up from the text input.
+
+    Using:
+      - inline_query → triggers this handler
+      - answerInlineQuery (update.inline_query.answer) → shows results
+    """
+    query = update.inline_query.query.strip().upper()
+    user = update.effective_user
+
+    if not query:
+        # Empty query: show pairs from different categories
+        forex = [p for p in AVAILABLE_PAIRS if AVAILABLE_PAIRS[p].get("type") == "forex"][:8]
+        crypto = [p for p in AVAILABLE_PAIRS if AVAILABLE_PAIRS[p].get("type") == "crypto"][:6]
+        stock = [p for p in AVAILABLE_PAIRS if AVAILABLE_PAIRS[p].get("type") == "stock"][:4]
+        commodity = [p for p in AVAILABLE_PAIRS if AVAILABLE_PAIRS[p].get("type") == "commodity"][:4]
+        results = forex + crypto + stock + commodity
+    else:
+        results = [p for p in AVAILABLE_PAIRS if query in p]
+        results.sort()
+        results = results[:50]  # Telegram limit
+
+    inline_results = []
+    for pair in results:
+        display = get_pair_display(pair)
+        info = AVAILABLE_PAIRS.get(pair, {})
+        ptype = info.get("type", "")
+        emoji = TYPE_EMOJI.get(ptype, "📊")
+        is_otc = info.get("otc", False)
+
+        # Build description: category + OTC tag
+        type_labels = {
+            "forex": "فارکس",
+            "crypto": "کریپتو",
+            "stock": "سهام",
+            "commodity": "کالا",
+        }
+        label = type_labels.get(ptype) or ptype.title()
+        if is_otc:
+            label += " (OTC)"
+
+        inline_results.append(
+            InlineQueryResultArticle(
+                id=pair,
+                title=f"{emoji} {display}",
+                description=f"{label} — {pair}",
+                input_message_content=InputTextMessageContent(
+                    f"/signal {pair}"
+                ),
+                url="",
+            )
+        )
+
+    await update.inline_query.answer(
+        inline_results,
+        cache_time=2,
+        is_personal=True,
+        button=InlineQueryResultsButton(
+            text="🔍 جستجوی جفت‌ارز در TradeMind",
+            start_parameter="search",
+        ),
+    )
+
+
+# ========================================================
 # MAIN
-# =======================================================
+# ========================================================
 
 def main():
     if not BOT_TOKEN:
-        logger.error("❌ BOT_TOKEN not set!")
+        logger.error("❌ BOT_TOKEN تنظیم نشده!")
         return
 
     print("""
     ╔══════════════════════════════════╗
     ║     🤖 TradeMind Signal Bot     ║
     ║  AI-Powered Trading Signals      ║
-    ║  for Pocket Option & Binary Ops  ║
     ╚══════════════════════════════════╝
     """)
 
@@ -750,19 +1139,29 @@ def main():
     app.add_handler(CommandHandler("analysis", analysis_cmd))
     app.add_handler(CommandHandler("subscribe", subscribe_cmd))
     app.add_handler(CommandHandler("unsubscribe", unsubscribe_cmd))
+    if _PO_AVAILABLE:
+        app.add_handler(CommandHandler("posignal", posignal_cmd))
 
-    # Callbacks
+    # Callbacks — main menu
+    app.add_handler(CallbackQueryHandler(main_algo_callback, pattern=r"^main_algo$"))
+    app.add_handler(CallbackQueryHandler(main_scraper_callback, pattern=r"^main_scraper$"))
+
+    # Callbacks — categories & pairs
     app.add_handler(CallbackQueryHandler(category_callback, pattern=r"^cat_"))
     app.add_handler(CallbackQueryHandler(pair_select_callback, pattern=r"^pair_"))
     app.add_handler(CallbackQueryHandler(page_callback, pattern=r"^pg_"))
     app.add_handler(CallbackQueryHandler(signal_timeframe_callback, pattern=r"^tf_"))
-    app.add_handler(CallbackQueryHandler(back_cat_callback, pattern=r"^back_cat$"))
-    app.add_handler(CallbackQueryHandler(back_pairs_callback, pattern=r"^back_pairs_"))
+
     # Callbacks — back navigation
     app.add_handler(CallbackQueryHandler(back_main_callback, pattern=r"^back_main$"))
+    app.add_handler(CallbackQueryHandler(back_cat_callback, pattern=r"^back_cat$"))
+    app.add_handler(CallbackQueryHandler(back_pairs_callback, pattern=r"^back_pairs_"))
 
     # Callbacks — utility
     app.add_handler(CallbackQueryHandler(noop_callback, pattern=r"^noop$"))
+
+    # Inline query — drawer search
+    app.add_handler(InlineQueryHandler(inline_search))
 
     # Direct pair input
     app.add_handler(MessageHandler(
@@ -771,8 +1170,6 @@ def main():
     ))
 
     # Unknown commands
-    app.add_handler(InlineQueryHandler(inline_search))
-
     app.add_handler(MessageHandler(filters.COMMAND, unknown_command))
 
     logger.info("🤖 TradeMind Signal Bot is running...")
